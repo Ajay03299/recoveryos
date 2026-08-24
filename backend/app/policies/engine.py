@@ -115,6 +115,12 @@ def evaluate_policy(
             "— human approval required.",
             needs_approval=True,
         ))
+    elif high_value:
+        checks.append(PolicyCheck(
+            "high_value_threshold", True,
+            f"Amount exceeds {policy.high_value_threshold_paise} paise, and the "
+            "selected action is already a human handoff.",
+        ))
     else:
         checks.append(PolicyCheck(
             "high_value_threshold", True,
