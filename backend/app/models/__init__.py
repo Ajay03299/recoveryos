@@ -133,3 +133,33 @@ class IdempotencyRecord(Base):
     key: Mapped[str] = mapped_column(String(96), primary_key=True)
     result: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+class PaymentRecord(Base):
+    """Local mirror of every payment artefact we create.
+
+    Exists so we can answer "did we already do this?" without trusting an
+    external provider to be reachable.
+    """
+    __tablename__ = "payment_records"
+
+    reference: Mapped[str] = mapped_column(String(64), primary_key=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey("recovery_cases.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(24))
+    demo_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    amount_paise: Mapped[int] = mapped_column(Integer)
+    amount_paid_paise: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="CREATED")
+    url: Mapped[str] = mapped_column(String(400), default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SystemFlag(Base):
+    """Runtime toggles. Used to demonstrate failure handling on stage."""
+    __tablename__ = "system_flags"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
