@@ -34,3 +34,19 @@ class StrategistOutput(BaseModel):
         description="Discount to request in paise. The policy engine may reduce or refuse it.")
     requires_human_approval: bool = Field(
         default=False, description="Set true if the agent is unsure it should act alone.")
+
+
+class ConversationOutput(BaseModel):
+    """Conversation Agent: what to say to the customer."""
+    reply: str = Field(
+        max_length=600, description="The message shown to the customer.")
+    wants_offer_check: bool = Field(
+        default=False,
+        description="True if the customer asked about a discount. The backend "
+                    "decides eligibility; the agent never decides it.")
+    wants_payment_link: bool = Field(
+        default=False,
+        description="True if the customer is ready to pay and needs a link.")
+    intent: str = Field(
+        default="general", max_length=40,
+        description="One of: why_failed, discount, payment_help, product_question, general.")

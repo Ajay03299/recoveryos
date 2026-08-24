@@ -80,8 +80,12 @@ def evaluate_strategies(case: RecoveryCase, score: int,
                    else CONTACT_COST_PAISE)
 
         # Automating a large account carries relationship risk; a human does not.
+        # A missing threshold must fail CLOSED: treat it as 0 so every amount
+        # counts as high-value, rather than silently disabling the guardrail.
+        threshold = policy.high_value_threshold_paise
+        threshold = 0 if threshold is None else threshold
         risk = 0
-        if (case.amount_paise > policy.high_value_threshold_paise
+        if (case.amount_paise > threshold
                 and strategy is not Strategy.ESCALATE_HUMAN):
             risk = int(case.amount_paise * HIGH_VALUE_RISK_PCT / 100)
 

@@ -86,6 +86,9 @@ class RecoveryCase(Base):
     events: Mapped[list["AuditEvent"]] = relationship(
         back_populates="case", order_by="AuditEvent.created_at"
     )
+    conversation: Mapped[list["ConversationTurn"]] = relationship(
+        order_by="ConversationTurn.created_at"
+    )
 
 
 class AuditEvent(Base):
@@ -163,3 +166,28 @@ class SystemFlag(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ConversationTurn(Base):
+    """One message in the customer-facing recovery conversation."""
+    __tablename__ = "conversation_turns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey("recovery_cases.id"), index=True)
+
+    role: Mapped[str] = mapped_column(String(16))  # customer | agent
+    body: Mapped[str] = mapped_column(Text)
+    tool_calls: Mapped[list | None] = mapped_column(JSON)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SimulationRun(Base):
+    """A deterministic baseline-vs-RecoveryOS experiment."""
+    __tablename__ = "simulation_runs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    seed: Mapped[int] = mapped_column(Integer)
+    case_count: Mapped[int] = mapped_column(Integer)
+    results: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

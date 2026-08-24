@@ -150,4 +150,46 @@ class MockProvider(LLMProvider):
             }
             return schema.model_validate(payload)
 
+        if schema.__name__ == "ConversationOutput":
+            text = prompt.rsplit("customer:", 1)[-1].strip().lower()
+            offer_available = "An approved offer of" in prompt
+
+            if any(w in text for w in ("discount", "offer", "cheaper", "coupon",
+                                       "price", "deal", "sasta")):
+                reply = (
+                    "Let me check what's approved for your order. "
+                    + ("Good news — I can apply an approved offer and generate a "
+                       "fresh payment link for you."
+                       if offer_available else
+                       "I don't have an approved offer available for this order, but "
+                       "I can help you complete the payment without rebuilding your "
+                       "cart.")
+                )
+                return schema.model_validate({
+                    "reply": reply, "wants_offer_check": True,
+                    "wants_payment_link": offer_available, "intent": "discount"})
+
+            if any(w in text for w in ("why", "fail", "failed", "declined", "error",
+                                       "kya hua", "ho gaya")):
+                return schema.model_validate({
+                    "reply": (f"Your payment didn't complete — {BARRIER[reason].lower()} "
+                              "was the cause, so nothing was charged. I can help you "
+                              "finish it without rebuilding your cart."),
+                    "wants_offer_check": False, "wants_payment_link": False,
+                    "intent": "why_failed"})
+
+            if any(w in text for w in ("yes", "ok", "sure", "pay", "link", "retry",
+                                       "haan", "theek")):
+                return schema.model_validate({
+                    "reply": ("Sending you a fresh payment link now — your cart is "
+                              "exactly as you left it."),
+                    "wants_offer_check": False, "wants_payment_link": True,
+                    "intent": "payment_help"})
+
+            return schema.model_validate({
+                "reply": ("Happy to help you get this sorted. I can walk you through "
+                          "completing the payment, or answer a question about the order."),
+                "wants_offer_check": False, "wants_payment_link": False,
+                "intent": "general"})
+
         raise NotImplementedError(f"MockProvider has no handler for {schema.__name__}")

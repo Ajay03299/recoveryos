@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import actions, cases, health, payments
+from app.api import actions, analytics, cases, conversation, health, payments
 from app.core.config import settings
 from app.db.session import init_db
 
@@ -33,3 +33,5 @@ app.include_router(health.router)
 app.include_router(cases.router)
 app.include_router(actions.router)
 app.include_router(payments.router)
+app.include_router(conversation.router)
+app.include_router(analytics.router)
