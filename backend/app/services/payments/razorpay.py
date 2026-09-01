@@ -5,6 +5,7 @@ we verify the signature, then re-query the API before recording any recovery.
 """
 import hashlib
 import hmac
+import uuid
 
 import httpx
 
@@ -43,7 +44,11 @@ class RazorpayProvider(PaymentProvider):
             "amount": amount_paise,
             "currency": "INR",
             "description": description[:255],
-            "reference_id": f"{case_id}-{amount_paise}",
+            # Must be globally unique at Razorpay. The local DB is re-seeded
+            # between demo runs, so a stable id collides on the second run. Our
+            # own idempotency layer (case_id + action_type) is what prevents
+            # duplicate links; this field only needs to be unique.
+            "reference_id": f"{case_id}-{uuid.uuid4().hex[:8]}",
             "customer": {
                 "name": customer_name,
                 "email": customer_email,

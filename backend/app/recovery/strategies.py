@@ -57,6 +57,23 @@ class StrategyOption:
     explanation: str
 
 
+def escalation_warranted(case: RecoveryCase, policy: MerchantPolicy) -> bool:
+    """Does this case need a person?
+
+    Three situations qualify: the amount is large enough that an automated
+    misstep damages a relationship, the automated path is exhausted, or the
+    customer has already been contacted as often as the merchant permits.
+    """
+    threshold = policy.high_value_threshold_paise
+    threshold = 0 if threshold is None else threshold
+    max_attempts = policy.max_recovery_attempts or 2
+    max_contacts = policy.max_contacts_per_week or 2
+
+    return (case.amount_paise > threshold
+            or case.attempt_count > max_attempts
+            or case.contacts_sent >= max_contacts)
+
+
 def _proposed_discount(case: RecoveryCase, policy: MerchantPolicy) -> int:
     """Largest discount that stays inside merchant limits. Never invented by the LLM."""
     pct_cap = int(case.amount_paise * policy.max_discount_pct / 100)
@@ -68,8 +85,15 @@ def evaluate_strategies(case: RecoveryCase, score: int,
     """Rank every plausible strategy by expected net recovered value."""
     base_p = score / 100
     candidates = list(STRATEGY_FIT.get(case.failure_reason, [Strategy.REMINDER]))
-    if Strategy.ESCALATE_HUMAN not in candidates:
+
+    # Human review is a scarce resource, not a free high-lift option. Offering it
+    # on every case makes the EV math escalate anything above a few thousand
+    # rupees, which is a triage queue rather than automation. It is a candidate
+    # only where a human genuinely adds judgement the agent cannot.
+    if escalation_warranted(case, policy) and Strategy.ESCALATE_HUMAN not in candidates:
         candidates.append(Strategy.ESCALATE_HUMAN)
+    if not candidates:
+        candidates = [Strategy.ESCALATE_HUMAN]
 
     options: list[StrategyOption] = []
     for strategy in candidates:

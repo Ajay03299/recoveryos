@@ -116,3 +116,32 @@ def test_missing_high_value_threshold_fails_closed():
     policy.high_value_threshold_paise = None
     case = make_case(amount_paise=7_500_000)
     assert best_strategy(case, 80, policy).strategy is Strategy.ESCALATE_HUMAN
+
+
+def test_escalation_is_not_offered_on_ordinary_cases():
+    """Human review must not win the EV math on a routine ₹4,999 failure."""
+    from app.models.enums import Strategy
+    from app.recovery.strategies import evaluate_strategies
+    from app.simulation.engine import default_policy
+    from tests.test_scoring import make_case
+
+    options = evaluate_strategies(make_case(amount_paise=499_900), 80, default_policy())
+    assert Strategy.ESCALATE_HUMAN not in {o.strategy for o in options}
+
+
+def test_escalation_is_offered_when_the_automated_path_is_exhausted():
+    from app.models.enums import Strategy
+    from app.recovery.strategies import evaluate_strategies
+    from app.simulation.engine import default_policy
+    from tests.test_scoring import make_case
+
+    options = evaluate_strategies(make_case(attempt_count=6, contacts_sent=5),
+                                  40, default_policy())
+    assert Strategy.ESCALATE_HUMAN in {o.strategy for o in options}
+
+
+def test_escalation_rate_stays_operationally_realistic():
+    """A collections team cannot absorb a third of all at-risk volume."""
+    result = run_simulation(n=300, seed=42)
+    rate = 100 * result["recoveryos"]["escalations"] / result["case_count"]
+    assert rate < 20, f"Escalating {rate:.1f}% of cases is not a viable workload."
