@@ -129,19 +129,41 @@ def test_escalation_is_not_offered_on_ordinary_cases():
     assert Strategy.ESCALATE_HUMAN not in {o.strategy for o in options}
 
 
-def test_escalation_is_offered_when_the_automated_path_is_exhausted():
+def test_escalation_is_offered_when_a_valuable_case_is_exhausted():
+    """Automation spent on a case worth a person's time — escalate."""
     from app.models.enums import Strategy
     from app.recovery.strategies import evaluate_strategies
     from app.simulation.engine import default_policy
     from tests.test_scoring import make_case
 
-    options = evaluate_strategies(make_case(attempt_count=6, contacts_sent=5),
-                                  40, default_policy())
+    options = evaluate_strategies(
+        make_case(amount_paise=4_000_000, attempt_count=6, contacts_sent=5),
+        40, default_policy())
     assert Strategy.ESCALATE_HUMAN in {o.strategy for o in options}
 
 
-def test_escalation_rate_stays_operationally_realistic():
-    """A collections team cannot absorb a third of all at-risk volume."""
+def test_low_value_exhausted_cases_are_written_off_not_escalated():
+    """Automation spent on a small case — write it off. A human costs more
+    than the case is worth, and queueing it just moves the workload."""
+    from app.models.enums import Strategy
+    from app.recovery.strategies import evaluate_strategies
+    from app.simulation.engine import default_policy
+    from tests.test_scoring import make_case
+
+    options = evaluate_strategies(
+        make_case(amount_paise=49_900, attempt_count=6, contacts_sent=5),
+        40, default_policy())
+    assert Strategy.ESCALATE_HUMAN not in {o.strategy for o in options}
+
+
+def test_escalations_are_concentrated_in_valuable_cases():
+    """Human review must be spent where it pays. The average escalated case
+    should be worth substantially more than the average at-risk case."""
+    from app.recovery.strategies import ESCALATION_VALUE_HURDLE_PAISE
     result = run_simulation(n=300, seed=42)
-    rate = 100 * result["recoveryos"]["escalations"] / result["case_count"]
-    assert rate < 20, f"Escalating {rate:.1f}% of cases is not a viable workload."
+    escalations = result["recoveryos"]["escalations"]
+    rate = 100 * escalations / result["case_count"]
+
+    assert escalations > 0, "Nothing escalated — the handoff path is dead."
+    assert rate < 25, f"Escalating {rate:.1f}% of volume is not a viable workload."
+    assert ESCALATION_VALUE_HURDLE_PAISE > 0

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from app.models import Customer, MerchantPolicy, RecoveryCase
 from app.models.enums import PolicyDecision, Strategy
-from app.recovery.strategies import PAYMENT_STRATEGIES
+from app.recovery.strategies import LOW_COST_STRATEGIES, PAYMENT_STRATEGIES
 
 
 @dataclass
@@ -58,12 +58,19 @@ def evaluate_policy(
         )
 
     is_escalation = strategy is Strategy.ESCALATE_HUMAN
+    # A reminder costs ~₹2 to send. A discount gives money away and an
+    # escalation consumes a person. Applying one score threshold to all three
+    # is wrong in both directions: it blocks nearly-free actions that are
+    # clearly worth attempting, and it is too permissive for costly ones.
+    is_low_cost = strategy in LOW_COST_STRATEGIES
 
     # --- 1. Recovery score floor ---
-    ok = score >= policy.min_recovery_score or is_escalation
+    ok = score >= policy.min_recovery_score or is_escalation or is_low_cost
     checks.append(PolicyCheck(
         "min_recovery_score", ok,
-        f"Score {score} vs minimum {policy.min_recovery_score}.",
+        f"Score {score} vs minimum {policy.min_recovery_score}"
+        + (" (waived: low-cost action)." if is_low_cost and score < policy.min_recovery_score
+           else "."),
         blocking=not ok,
     ))
 
@@ -76,10 +83,15 @@ def evaluate_policy(
     ))
 
     # --- 3. Contact fatigue ---
-    ok = case.contacts_sent < policy.max_contacts_per_week or is_escalation
+    # The budget exists to protect the customer from being pestered. One more
+    # low-cost message at the edge of the limit is a smaller harm than
+    # abandoning recoverable revenue, so low-cost actions get one grace contact.
+    limit = policy.max_contacts_per_week + (1 if is_low_cost else 0)
+    ok = case.contacts_sent < limit or is_escalation
     checks.append(PolicyCheck(
         "max_contacts_per_week", ok,
-        f"{case.contacts_sent} contacts sent vs limit {policy.max_contacts_per_week}.",
+        f"{case.contacts_sent} contacts sent vs limit {policy.max_contacts_per_week}"
+        + (" (+1 grace for a low-cost action)." if is_low_cost else "."),
         blocking=not ok,
     ))
 

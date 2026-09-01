@@ -39,6 +39,16 @@ STRATEGY_LIFT: dict[Strategy, float] = {
     Strategy.DO_NOT_CONTACT: 0.0,
 }
 
+# Cheap and non-intrusive: a single message, no money given away, no human
+# time consumed. These face a lower policy bar than costly interventions.
+LOW_COST_STRATEGIES = {
+    Strategy.REMINDER,
+    Strategy.PAYMENT_LINK,
+    Strategy.RETRY_PAYMENT,
+    Strategy.PAYMENT_METHOD_UPDATE,
+    Strategy.ANSWER_OBJECTION,
+}
+
 PAYMENT_STRATEGIES = {
     Strategy.RETRY_PAYMENT,
     Strategy.PAYMENT_LINK,
@@ -57,21 +67,37 @@ class StrategyOption:
     explanation: str
 
 
+# A person working a case costs real time. Engaging one on a case worth less
+# than this is value-destroying regardless of recovery probability, so scarce
+# human capacity gets a hurdle rate rather than merely a positive EV test.
+ESCALATION_VALUE_HURDLE_PAISE = 50 * ESCALATION_COST_PAISE  # ₹25,000
+
+
 def escalation_warranted(case: RecoveryCase, policy: MerchantPolicy) -> bool:
     """Does this case need a person?
 
-    Three situations qualify: the amount is large enough that an automated
-    misstep damages a relationship, the automated path is exhausted, or the
-    customer has already been contacted as often as the merchant permits.
+    Two situations qualify:
+
+    1. The amount is large enough that an automated misstep damages a
+       commercial relationship. Relationship risk always warrants a human.
+    2. The automated path is exhausted AND the case is worth a person's time.
+
+    A small case with the automated path exhausted is written off, not queued.
+    Escalating a ₹499 case to a human who costs ₹500 destroys value, and a
+    system that escalates a third of its volume has not reduced anyone's
+    workload — it has just moved the queue.
     """
     threshold = policy.high_value_threshold_paise
     threshold = 0 if threshold is None else threshold
+    if case.amount_paise > threshold:
+        return True
+
     max_attempts = policy.max_recovery_attempts or 2
     max_contacts = policy.max_contacts_per_week or 2
+    exhausted = (case.attempt_count > max_attempts
+                 or case.contacts_sent >= max_contacts)
 
-    return (case.amount_paise > threshold
-            or case.attempt_count > max_attempts
-            or case.contacts_sent >= max_contacts)
+    return exhausted and case.amount_paise >= ESCALATION_VALUE_HURDLE_PAISE
 
 
 def _proposed_discount(case: RecoveryCase, policy: MerchantPolicy) -> int:

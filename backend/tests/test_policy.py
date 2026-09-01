@@ -23,9 +23,12 @@ def test_healthy_case_is_auto_allowed():
     assert result.decision is PolicyDecision.AUTO_ALLOWED
 
 
-def test_low_score_is_blocked():
+def test_low_score_blocks_costly_actions():
+    """The score floor gates expensive interventions. Cheap ones are waived —
+    see test_low_score_still_permits_a_cheap_reminder."""
     result = evaluate_policy(make_case(), make_customer(), make_policy(),
-                             Strategy.PAYMENT_LINK, score=20, ai_confidence=0.9)
+                             Strategy.INCENTIVE, score=20,
+                             requested_discount_paise=30_000, ai_confidence=0.9)
     assert result.decision is PolicyDecision.BLOCKED
     assert "min_recovery_score" in {c.name for c in result.checks if not c.passed}
 
@@ -103,3 +106,38 @@ def test_high_value_overdue_prefers_human_escalation():
 def test_discount_never_exceeds_policy_cap():
     options = evaluate_strategies(make_case(amount_paise=10_000_000), 70, make_policy())
     assert all(o.discount_paise <= 50_000 for o in options)
+
+
+def test_low_score_still_permits_a_cheap_reminder():
+    """A ₹2 message on a low-scoring ₹5,000 case is worth attempting.
+    Blocking it is not caution, it is leaving money on the table."""
+    result = evaluate_policy(make_case(), make_customer(), make_policy(),
+                             Strategy.REMINDER, score=20, ai_confidence=0.9)
+    assert result.decision is not PolicyDecision.BLOCKED
+
+
+def test_low_score_still_blocks_giving_money_away():
+    """The waiver is for cheap actions only. A discount stays blocked."""
+    result = evaluate_policy(make_case(), make_customer(), make_policy(),
+                             Strategy.INCENTIVE, score=20,
+                             requested_discount_paise=30_000, ai_confidence=0.9)
+    assert result.decision is PolicyDecision.BLOCKED
+
+
+def test_contact_grace_applies_to_cheap_actions_only():
+    at_limit = make_case(contacts_sent=2)
+    cheap = evaluate_policy(at_limit, make_customer(), make_policy(),
+                            Strategy.REMINDER, score=80, ai_confidence=0.9)
+    costly = evaluate_policy(at_limit, make_customer(), make_policy(),
+                             Strategy.INCENTIVE, score=80,
+                             requested_discount_paise=30_000, ai_confidence=0.9)
+    assert cheap.decision is not PolicyDecision.BLOCKED
+    assert costly.decision is PolicyDecision.BLOCKED
+
+
+def test_contact_grace_is_not_unlimited():
+    """One grace contact, not a licence to spam."""
+    result = evaluate_policy(make_case(contacts_sent=6), make_customer(),
+                             make_policy(), Strategy.REMINDER,
+                             score=80, ai_confidence=0.9)
+    assert result.decision is PolicyDecision.BLOCKED
